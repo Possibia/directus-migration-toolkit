@@ -8,7 +8,6 @@ Migrate between ANY environments with ANY names. From `dev` to `prod`, `potato` 
 
 ## ✨ Why This Tool?
 
-🔥 **Truly Dynamic** - No hardcoded environment names  
 🛡️ **Production-Safe** - Full backups, validation, and recovery  
 🧠 **Intelligent** - Auto-detects your schema and handles edge cases  
 ⚡ **Fast Setup** - Running migrations in under 30 seconds  
