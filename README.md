@@ -28,8 +28,6 @@ nano .env
 ./directus-dynamic-migrate.sh dev prod
 ```
 
-**That's it!** No complex setup, no hardcoded names, no YAML configs.
-
 ---
 
 ## 🔄 Migration Types
