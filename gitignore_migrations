@@ -1,0 +1,10 @@
+# Add these to your .gitignore
+
+# Migration artifacts
+backups/
+snapshots/
+env_backups/
+data_exports/
+
+# Environment files with tokens
+.env.directus
