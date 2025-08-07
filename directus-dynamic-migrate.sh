@@ -335,8 +335,42 @@ migrate_data() {
     
     # Get database configuration
     local source_container target_container
+    local source_db_name source_db_user source_db_password
+    local target_db_name target_db_user target_db_password
+    
     source_container=$(get_env_var "$source_env" "DB_CONTAINER")
     target_container=$(get_env_var "$target_env" "DB_CONTAINER")
+    
+    source_db_name=$(get_env_var "$source_env" "DB_NAME")
+    source_db_user=$(get_env_var "$source_env" "DB_USER") 
+    source_db_password=$(get_env_var "$source_env" "DB_PASSWORD")
+    source_db_name=${source_db_name:-directus}
+    source_db_user=${source_db_user:-directus}
+    
+    target_db_name=$(get_env_var "$target_env" "DB_NAME")
+    target_db_user=$(get_env_var "$target_env" "DB_USER")
+    target_db_password=$(get_env_var "$target_env" "DB_PASSWORD") 
+    target_db_name=${target_db_name:-directus}
+    target_db_user=${target_db_user:-directus}
+    
+    
+    log "Using database credentials - Source: $source_db_user@$source_db_name, Target: $target_db_user@$target_db_name"
+    
+    # Helper function to execute database commands with password support
+    exec_db_cmd() {
+        local container="$1"
+        local db_user="$2" 
+        local db_name="$3"
+        local db_password="$4"
+        shift 4
+        local cmd="$*"
+        
+        if [[ -n "$db_password" ]]; then
+            docker exec -e PGPASSWORD="$db_password" "$container" "$cmd" -U "$db_user" -d "$db_name"
+        else
+            docker exec "$container" "$cmd" -U "$db_user" -d "$db_name"
+        fi
+    }
     
     # Fallback to DB_HOST if containers not available
     local source_host target_host
@@ -366,7 +400,7 @@ migrate_data() {
         fi
         
         # Test database connectivity
-        if ! docker exec "$source_container" psql -U "directus" -d "directus" -c "SELECT 1;" >/dev/null 2>&1; then
+        if ! exec_db_cmd "$source_container" "$source_db_user" "$source_db_name" "$source_db_password" psql -c "SELECT 1;" >/dev/null 2>&1; then
             log "❌ Cannot connect to source database in $source_container"
             return 1
         fi
@@ -379,7 +413,7 @@ migrate_data() {
         fi
         
         # Test database connectivity
-        if ! docker exec "$target_container" psql -U "directus" -d "directus" -c "SELECT 1;" >/dev/null 2>&1; then
+        if ! exec_db_cmd "$target_container" "$target_db_user" "$target_db_name" "$target_db_password" psql -c "SELECT 1;" >/dev/null 2>&1; then
             log "❌ Cannot connect to target database in $target_container"
             return 1
         fi
@@ -396,8 +430,8 @@ migrate_data() {
     
     if [[ -n "$target_container" ]]; then
         if docker exec "$target_container" pg_dump \
-            -U "directus" \
-            -d "directus" \
+            -U "$target_db_user" \
+            -d "$target_db_name" \
             -Fc \
             > "$target_backup" 2>/dev/null; then
             log "✅ Target backup created: $target_backup ($(du -h "$target_backup" | cut -f1))"
@@ -458,8 +492,8 @@ migrate_data() {
     
     if [[ -n "$source_container" ]]; then
         if docker exec "$source_container" pg_dump \
-            -U "directus" \
-            -d "directus" \
+            -U "$source_db_user" \
+            -d "$source_db_name" \
             --data-only \
             $exclude_flags \
             -Fc \
@@ -504,15 +538,15 @@ migrate_data() {
                     log "  Clearing table: $table"
                     
                     # Check if table exists
-                    local table_exists=$(docker exec "$target_container" psql -U "directus" -d "directus" -t \
+                    local table_exists=$(docker exec "$target_container" psql -U "$target_db_user" -d "$target_db_name" -t \
                         -c "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='$table');" | xargs)
                     
                     if [[ "$table_exists" == "t" ]]; then
                         # Clear table WITHOUT CASCADE to protect system tables
-                        docker exec "$target_container" psql -U "directus" -d "directus" \
+                        docker exec "$target_container" psql -U "$target_db_user" -d "$target_db_name" \
                             -c "TRUNCATE TABLE public.\"$table\" RESTART IDENTITY;" 2>/dev/null || {
                             log "    Truncate failed, trying DELETE"
-                            docker exec "$target_container" psql -U "directus" -d "directus" \
+                            docker exec "$target_container" psql -U "$target_db_user" -d "$target_db_name" \
                                 -c "DELETE FROM public.\"$table\";" 2>/dev/null || {
                                 log "    WARNING: Could not clear $table"
                             }
@@ -533,12 +567,12 @@ migrate_data() {
         log "Importing data to target..."
         
         # Disable foreign key checks to prevent CASCADE issues
-        docker exec "$target_container" psql -U "directus" -d "directus" -c "SET session_replication_role = replica;"
+        docker exec "$target_container" psql -U "$target_db_user" -d "$target_db_name" -c "SET session_replication_role = replica;"
         
         # Import using pg_restore (more robust than psql)
         if docker exec "$target_container" pg_restore \
-            --username="directus" \
-            --dbname="directus" \
+            --username="$target_db_user" \
+            --dbname="$target_db_name" \
             --data-only \
             --disable-triggers \
             --no-owner \
@@ -563,8 +597,8 @@ migrate_data() {
         
         # Get all tables with user references, excluding system tables
         local tables_with_users=$(docker exec "$target_container" psql \
-            --username="directus" \
-            --dbname="directus" \
+            --username="$target_db_user" \
+            --dbname="$target_db_name" \
             --tuples-only \
             --no-align \
             -c "SELECT DISTINCT table_name 
@@ -589,7 +623,7 @@ migrate_data() {
             echo "$tables_with_users" | while read -r table; do
                 if [[ -n "$table" ]]; then
                     log "  Clearing user references in: $table"
-                    docker exec "$target_container" psql -U "directus" -d "directus" \
+                    docker exec "$target_container" psql -U "$target_db_user" -d "$target_db_name" \
                         -c "UPDATE public.\"$table\" SET 
                             user_created = NULL, 
                             user_updated = NULL 
@@ -604,7 +638,7 @@ migrate_data() {
         fi
         
         # Re-enable foreign key checks
-        docker exec "$target_container" psql -U "directus" -d "directus" -c "SET session_replication_role = DEFAULT;"
+        docker exec "$target_container" psql -U "$target_db_user" -d "$target_db_name" -c "SET session_replication_role = DEFAULT;"
         log "✅ Foreign key checks re-enabled"
         
         # Cleanup temp files
@@ -621,13 +655,13 @@ migrate_data() {
     
     # 🔍 FINAL VALIDATION
     log "🔍 Performing final validation..."
-    local final_user_count=$(docker exec "$target_container" psql -U "directus" -d "directus" -t -c "SELECT COUNT(*) FROM directus_users;" 2>/dev/null | xargs)
-    local final_settings_count=$(docker exec "$target_container" psql -U "directus" -d "directus" -t -c "SELECT COUNT(*) FROM directus_settings;" 2>/dev/null | xargs)
+    local final_user_count=$(docker exec "$target_container" psql -U "$target_db_user" -d "$target_db_name" -t -c "SELECT COUNT(*) FROM directus_users;" 2>/dev/null | xargs)
+    local final_settings_count=$(docker exec "$target_container" psql -U "$target_db_user" -d "$target_db_name" -t -c "SELECT COUNT(*) FROM directus_settings;" 2>/dev/null | xargs)
     
     if [[ "$final_user_count" -eq 0 ]]; then
         log "❌ CRITICAL ERROR: All users were deleted during migration!"
         log "❌ Please restore from backup: $target_backup"
-        log "   docker exec $target_container pg_restore -U directus -d directus --clean $target_backup"
+        log "   docker exec $target_container pg_restore -U $target_db_user -d $target_db_name --clean $target_backup"
         return 1
     fi
     
