@@ -8,7 +8,6 @@ Migrate between ANY environments with ANY names. From `dev` to `prod`, `potato` 
 
 ## ✨ Why This Tool?
 
-🔥 **Truly Dynamic** - No hardcoded environment names  
 🛡️ **Production-Safe** - Full backups, validation, and recovery  
 🧠 **Intelligent** - Auto-detects your schema and handles edge cases  
 ⚡ **Fast Setup** - Running migrations in under 30 seconds  
@@ -28,8 +27,6 @@ nano .env
 # Run your first migration
 ./directus-dynamic-migrate.sh dev prod
 ```
-
-**That's it!** No complex setup, no hardcoded names, no YAML configs.
 
 ---
 
@@ -224,34 +221,6 @@ Minimal output for automated scripts:
 ```
 
 Shows all available options and examples based on your configured environments.
-
----
-
-## ❓ FAQ
-
-**Q: Can I migrate between different Directus versions?**  
-A: Yes! The tool uses the schema API which is compatible across versions.
-
-**Q: What if my environments have different user accounts?**  
-A: Perfect! The tool preserves users in each environment and handles user references automatically.
-
-**Q: Can I roll back a migration?**  
-A: Yes! Every full migration creates a backup with recovery instructions.
-
-**Q: Does it work with custom collections?**  
-A: Absolutely! The tool dynamically detects your schema structure.
-
----
-
-## 🎉 What Makes This Special?
-
-Unlike other migration tools:
-
-🎯 **No Configuration Hell** - Works with your existing setup  
-🧠 **Intelligent** - Adapts to any schema structure  
-🛡️ **Production-Grade** - Used in real production environments  
-🚀 **Lightning Fast** - Get started in seconds, not hours  
-🎨 **Your Way** - Use any environment names you want  
 
 ---
 
